@@ -1,11 +1,16 @@
-name: Python App & Docker CI Pipeline
+name: Python App & Docker CI/CD to AWS ECR
 
 on:
   push:
     branches: [ "main" ]
 
+env:
+  AWS_REGION: us-east-2                   # e.g., us-east-1 or us-east-2
+  ECR_REGISTRY: 383418747940.dkr.ecr.us-east-2.amazonaws.com           # e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: cloud-inventory-system        # Your ECR repo name
+
 jobs:
-  build-and-test:
+  build-and-ship:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +27,25 @@ jobs:
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Build Docker Image
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets::AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets::AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, Tag, and Push Image to Amazon ECR
       run: |
-        docker build -t cloud-inventory-app:latest .
+        # Build the container exactly like before
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        
+        # Tag it with the unique GitHub commit hash so we track history
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:latest $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
+        
+        # Push both tags directly up to your private AWS storage locker
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
